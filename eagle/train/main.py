@@ -1,13 +1,13 @@
 import argparse
 
 parser = argparse.ArgumentParser(description='sp')
-parser.add_argument('--basepath', type=str, default='/home/lyh/weights/hf/vicuna_v13/7B/')
-parser.add_argument('--configpath', type=str, default="config.json")
+parser.add_argument('--basepath', type=str, default='/workspace/.cache/huggingface/hub/models--meta-llama--Llama-3.3-70B-Instruct/snapshots/6f6073b423013f6a7d4d9f39144961bfbfbc386b/')
+parser.add_argument('--configpath', type=str, default="/workspace/Eagle/eagle/train/agentic.json")
 parser.add_argument('--lr', type=float, default=3e-5)
 parser.add_argument('--bs', type=int, default=4)
 parser.add_argument('--gradient-accumulation-steps', type=int, default=1)
-parser.add_argument('--tmpdir', type=str, default='0')
-parser.add_argument('--cpdir', type=str, default='0')
+parser.add_argument('--tmpdir', type=str, default='/workspace/Eagle/ge_agentic_15k')
+parser.add_argument('--cpdir', type=str, default='checkpoints')
 args = parser.parse_args()
 
 train_config = {
@@ -62,12 +62,12 @@ from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 # import accelerate
 import numpy as np
-from transformers import get_linear_schedule_with_warmup, AutoConfig
+from transformers import get_linear_schedule_with_warmup, AutoConfig, LlamaPreTrainedModel
 
 if accelerator.is_main_process:
     import wandb
 
-    wandb.init(project="ess", entity="yuhui-li", config=train_config)
+    wandb.init(project="eagle", entity="scalet2", config=train_config)
 
 baseconfig = AutoConfig.from_pretrained(args.basepath)
 
@@ -262,8 +262,8 @@ def getkacc(model, data, head, max_length=5):
     input_ids = data["input_ids"]
     loss_mask = data["loss_mask"]
     target = data["target"]
-    total = [0 for _ in range(max_length)]
-    correct = [0 for _ in range(max_length)]
+    total = [1e-5 for _ in range(max_length)]
+    correct = [1e-5 for _ in range(max_length)]
     bs, seq_len = hidden_states.shape[0], hidden_states.shape[1]
     target_headout = head(target)
     target_ids = target_headout.argmax(dim=2)
