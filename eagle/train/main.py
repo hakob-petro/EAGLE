@@ -1,12 +1,12 @@
 import argparse
 
 parser = argparse.ArgumentParser(description='sp')
-parser.add_argument('--basepath', type=str, default='/workspace/.cache/huggingface/hub/models--meta-llama--Llama-3.3-70B-Instruct/snapshots/6f6073b423013f6a7d4d9f39144961bfbfbc386b/')
+parser.add_argument('--basepath', type=str, default='/root/.cache/huggingface/hub/models--TheAgenticAI--agentic-turbo-latest/snapshots/778a491d3b873c4d59203342b502e2c9a0bbeeaf/')
 parser.add_argument('--configpath', type=str, default="/workspace/Eagle/eagle/train/agentic.json")
 parser.add_argument('--lr', type=float, default=3e-5)
 parser.add_argument('--bs', type=int, default=4)
-parser.add_argument('--gradient-accumulation-steps', type=int, default=1)
-parser.add_argument('--tmpdir', type=str, default='/workspace/Eagle/ge_agentic_15k')
+parser.add_argument('--gradient-accumulation-steps', type=int, default=4)
+parser.add_argument('--tmpdir', type=str, default='/workspace/Eagle/generated')
 parser.add_argument('--cpdir', type=str, default='checkpoints')
 args = parser.parse_args()
 
@@ -31,7 +31,7 @@ train_config = {
     "mean": 0.0,
     "std": 0.2,
     "residual": "true,norm",
-    "max_len": 2048,
+    "max_len": 15000,
     # During training, truncating the training sequences means that the larger the setting, the more training data is used, and the better the effect, but it also consumes more VRAM.
     "config_path": args.configpath,
     "b1": 0.9,
@@ -340,6 +340,13 @@ else:
     model, head, optimizer, train_loader, test_loader = accelerator.prepare(
         model, head, optimizer, train_loader, test_loader
     )
+
+def count_trainable_params(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+print(f"Trainable parameters model: {count_trainable_params(model):,}")
+print(f"Trainable parameters head: {count_trainable_params(head):,}")
+
 # accelerator.load_state("checkpoints/state_5")
 for epoch in range(num_epochs + 1):
     top_3acc = [0 for _ in range(3)]

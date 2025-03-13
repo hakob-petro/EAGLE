@@ -14,7 +14,8 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 
-bigname = "meta-llama/Llama-3.3-70B-Instruct"
+# bigname = "TheAgenticAI/agentic-turbo-latest"
+bigname = "/root/llama-3-merged"
 
 
 # bigname = "/home/lyh/weights/hf/llama2chat/7B/"
@@ -55,6 +56,7 @@ def build_dataset_rank(
             "input_ids": [],
             "loss_mask": []
         }
+        count = 0
         for i in range(len(examples['messages'])):
             conversation = tokenizer.apply_chat_template(
                 examples['messages'][i],
@@ -78,8 +80,14 @@ def build_dataset_rank(
             sep2 = "<|eot_id|><|start_header_id|>user<|end_header_id|>"
 
             turns = conversation.split(sep2)
-            turns[1] = turns[0] + sep2 + turns[1]
-            turns = turns[1:]
+            # print(turns)
+            if len(turns) > 1:
+                turns[1] = turns[0] + sep2 + turns[1]
+                turns = turns[1:]
+            else:
+                turns = turns[0]
+                count += 1
+                print("****" * 10, count)
 
             cur_len = 1
             loss_mask[:cur_len] = 0
@@ -147,7 +155,8 @@ print(ds)
 # bigmodel = AutoModelForCausalLM.from_pretrained(bigname, load_in_4bit=True, device_map={"": 0}, )
 # smallmodel = AutoModelForCausalLM.from_pretrained(smallname, load_in_4bit=True, device_map={"": 1}, )
 # bigmodel = AutoModelForCausalLM.from_pretrained(bigname, device_map="auto", torch_dtype=torch.bfloat16)
-bigmodel = AutoModelForCausalLM.from_pretrained(bigname, device_map="auto", torch_dtype=torch.bfloat16, load_in_8bit=True)
+bigmodel = AutoModelForCausalLM.from_pretrained(bigname, device_map="auto", torch_dtype=torch.bfloat16,
+                                                load_in_8bit=True)
 # bigmodel = AutoModelForCausalLM.from_pretrained(bigname,  device_map="auto",load_in_8bit=True)
 bigmodel.eval()
 

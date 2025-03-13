@@ -1,6 +1,7 @@
-torch==2.0.1
-transformers==4.36.2
-accelerate==0.21.0
+datasets
+bitsandbytes
+transformers
+accelerate
 fschat==0.2.31
 gradio==3.50.2
 openai==0.28.0
