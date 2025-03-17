@@ -1,12 +1,13 @@
 import argparse
 
 parser = argparse.ArgumentParser(description='sp')
-parser.add_argument('--basepath', type=str, default='/root/.cache/huggingface/hub/models--TheAgenticAI--agentic-turbo-latest/snapshots/778a491d3b873c4d59203342b502e2c9a0bbeeaf/')
-parser.add_argument('--configpath', type=str, default="/workspace/Eagle/eagle/train/agentic.json")
-parser.add_argument('--lr', type=float, default=3e-5)
-parser.add_argument('--bs', type=int, default=4)
-parser.add_argument('--gradient-accumulation-steps', type=int, default=4)
-parser.add_argument('--tmpdir', type=str, default='/workspace/Eagle/generated')
+parser.add_argument('--basepath', type=str,
+                    default='/root/.cache/huggingface/hub/tool_call_v3_nemo')
+parser.add_argument('--configpath', type=str, default="/workspace/EAGLE/eagle/train/agentic.json")
+parser.add_argument('--lr', type=float, default=6e-5)
+parser.add_argument('--bs', type=int, default=1)
+parser.add_argument('--gradient-accumulation-steps', type=int, default=8)
+parser.add_argument('--tmpdir', type=str, default='/workspace/EAGLE/eagle/ge_data/0/agentic_0_15583_mubp16/')
 parser.add_argument('--cpdir', type=str, default='checkpoints')
 args = parser.parse_args()
 
@@ -31,7 +32,7 @@ train_config = {
     "mean": 0.0,
     "std": 0.2,
     "residual": "true,norm",
-    "max_len": 15000,
+    "max_len": 8000,
     # During training, truncating the training sequences means that the larger the setting, the more training data is used, and the better the effect, but it also consumes more VRAM.
     "config_path": args.configpath,
     "b1": 0.9,
@@ -63,6 +64,7 @@ from tqdm import tqdm
 # import accelerate
 import numpy as np
 from transformers import get_linear_schedule_with_warmup, AutoConfig, LlamaPreTrainedModel
+import bitsandbytes as bnb
 
 if accelerator.is_main_process:
     import wandb
@@ -147,7 +149,6 @@ class CustomDataset(Dataset):
         input_ids = data['input_ids'][:train_config["max_len"]][None, :]
         loss_mask = data["loss_mask"][:train_config["max_len"]][None, :]
 
-
         length = hidden_state.shape[1]
         # length_q = data['query_ids'].shape[1]
         attention_mask = [1] * length
@@ -167,7 +168,6 @@ class CustomDataset(Dataset):
         new_data["target"] = target
         new_data["hidden_state_big"] = hidden_state
         new_data["input_ids"] = input_ids_target
-
 
         if self.transform:
             new_data = self.transform(new_data)
@@ -228,6 +228,7 @@ def top_accuracy(output, target, topk=(1,)):
             res.append(correct_k)
         return res
 
+
 def compute_loss(target, target_p, predict, loss_mask):
     out_head = head(predict)
     out_logp = nn.LogSoftmax(dim=2)(out_head)
@@ -236,6 +237,7 @@ def compute_loss(target, target_p, predict, loss_mask):
     vloss = criterion(predict, target)
     vloss = torch.sum(torch.mean(loss_mask * vloss, 2)) / (loss_mask.sum() + 1e-5)
     return vloss, ploss, out_head
+
 
 @torch.no_grad()
 def getkacc(model, data, head, max_length=5):
@@ -321,8 +323,17 @@ if accelerator.is_main_process:
 config = EConfig.from_pretrained(train_config["config_path"])
 model = Model(config, load_emb=True, path=args.basepath)
 
+
+def count_trainable_params(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+print(f"Trainable parameters model: {count_trainable_params(model):,}")
+print(f"Trainable parameters head: {count_trainable_params(head):,}")
+
 criterion = nn.SmoothL1Loss(reduction="none")
 optimizer = optim.AdamW(model.parameters(), lr=train_config["lr"], betas=(train_config["b1"], train_config["b2"]))
+# optimizer = bnb.optim.Adam8bit(model.parameters(), lr=train_config["lr"], betas=(train_config["b1"], train_config["b2"]))
 
 num_epochs = train_config["num_epochs"]
 num_warmup_steps = train_config["num_warmup_steps"]
@@ -341,11 +352,8 @@ else:
         model, head, optimizer, train_loader, test_loader
     )
 
-def count_trainable_params(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-print(f"Trainable parameters model: {count_trainable_params(model):,}")
-print(f"Trainable parameters head: {count_trainable_params(head):,}")
+# print(f"Trainable parameters model: {count_trainable_params(model):,}")
+# print(f"Trainable parameters head: {count_trainable_params(head):,}")
 
 # accelerator.load_state("checkpoints/state_5")
 for epoch in range(num_epochs + 1):

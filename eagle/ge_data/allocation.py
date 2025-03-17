@@ -9,7 +9,8 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 
 s = 0
-e = 18307
+# e = 17057
+e = 15583
 # e = 68 - 1
 gpus = [[0], [1], [2], [3], [4], [5], [6], [7]]
 

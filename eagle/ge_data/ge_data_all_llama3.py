@@ -1,6 +1,5 @@
 import argparse
 
-
 parser = argparse.ArgumentParser(description='sp')
 parser.add_argument('--start', type=int, default=0)
 parser.add_argument('--end', type=int, default=100)
@@ -13,12 +12,14 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_index)[1:-1]
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
+import json
+import hashlib
+
+bigname = "/root/.cache/huggingface/hub/models--TheAgenticAI--Nemotron-Llama/snapshots/8c600c701730659c363a1f2f055ad74a661570da/"
 
 
-bigname = "/home/lyh/weights/hf/llama3chat/8B/"
-#bigname = "/home/lyh/weights/hf/llama2chat/7B/"
-
+# bigname = "/home/lyh/weights/hf/llama2chat/7B/"
 
 
 def longest_common_prefix(list1, list2):
@@ -35,12 +36,44 @@ def longest_common_prefix(list1, list2):
     return common_prefix, prefix_length
 
 
+def hash_conversation(messages):
+    """Generate a hash for the entire conversation."""
+    messages_str = json.dumps(messages, sort_keys=True)  # Ensure consistent ordering
+    return hashlib.md5(messages_str.encode()).hexdigest()
+
+
+def remove_duplicates_by_hash(dataset, column):
+    dataset = dataset.map(lambda x: {"hash": hash_conversation(x[column])})
+    unique_hashes = set()
+
+    def filter_unique(example):
+        hash_value = example["hash"]
+        if hash_value not in unique_hashes:
+            unique_hashes.add(hash_value)
+            return True
+        return False
+
+    dataset = dataset.filter(filter_unique)
+    return dataset.remove_columns(["hash"])
+
+
 def build_dataset_rank(
         tokenizer, split="train",
         select=None,
 ):
-    ds = load_dataset('json', data_files="/home/lyh/data/hf/Shargpt/ShareGPT_V4.3_unfiltered_cleaned_split.json")
-    ds = ds['train']
+    # Load your dataset
+    df_2 = load_dataset("json", data_files="/workspace/Eagle/merged_data.jsonl", split="train")
+    df_2 = df_2.remove_columns(["rejected_response"])
+    df_2 = remove_duplicates_by_hash(df_2, "messages")  # Adjust split if needed
+    # print(cleaned_dataset)
+
+    df_1 = load_dataset("json", data_files="/workspace/Eagle/new_data_new.jsonl", split="train")
+    # df_2 = load_dataset("json", data_files="/home/hakob/ScaleTorch/EAGLE/merged_data.jsonl", split="train")
+    # df_2 = df_2.remove_columns(["rejected_response"])
+    ds = concatenate_datasets([df_1, df_2])
+
+    # ds = load_dataset('json', data_files="/home/lyh/data/hf/Shargpt/ShareGPT_V4.3_unfiltered_cleaned_split.json")
+    # ds = ds['train']
     ds = ds.shuffle(seed=42)
     ds1 = ds.select(range(args.start, args.end))
     # ds1 = ds.select(range(100,200))
@@ -52,7 +85,7 @@ def build_dataset_rank(
 
     def preprocess_function(examples):
         new_examples = {
-            "conversation":[],
+            "conversation": [],
             "input_ids": [],
             "loss_mask": []
         }
@@ -61,50 +94,47 @@ def build_dataset_rank(
                 {"role": "system",
                  "content": "You are a helpful, respectful and honest assistant. Always answer as helpfully as possible, while being safe.  Your answers should not include any harmful, unethical, racist, sexist, toxic, dangerous, or illegal content. Please ensure that your responses are socially unbiased and positive in nature.\n\nIf a question does not make any sense, or is not factually coherent, explain why instead of answering something not correct. If you don't know the answer to a question, please don't share false information."},
             ]
-            convroles=["user","assistant"]
+            convroles = ["user", "assistant"]
             roles = {"human": "user", "gpt": "assistant"}
-            source= examples['conversations'][i]
+            source = examples['conversations'][i]
             if roles[source[0]["from"]] != "user":
                 # Skip the first one if it is not from human
                 source = source[1:]
             for j, sentence in enumerate(source):
                 role = roles[sentence["from"]]
                 assert role == convroles[j % 2], f"{i}"
-                if sentence["from"]=="gpt":
-                    sentence["value"]=" "+sentence["value"]
+                if sentence["from"] == "gpt":
+                    sentence["value"] = " " + sentence["value"]
                 messages.append(
                     {"role": role, "content": sentence["value"]}
                 )
-            conversation=tokenizer.apply_chat_template(
+            conversation = tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=False,
             )
 
             if not tokenizer.pad_token_id:
-                tokenizer.pad_token_id=tokenizer.unk_token_id
+                tokenizer.pad_token_id = tokenizer.unk_token_id
 
             input_ids = tokenizer(
                 conversation,
                 return_tensors="pt",
-                max_length=2048,
+                max_length=15000,
                 add_special_tokens=False,
             ).input_ids[0]
-            loss_mask=torch.ones_like(input_ids)
-            #print(i)
+            loss_mask = torch.ones_like(input_ids)
+            # print(i)
 
             sep = "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n"
 
-
-
             total_len = len(input_ids)
 
-            sep2="<|eot_id|><|start_header_id|>user<|end_header_id|>"
+            sep2 = "<|eot_id|><|start_header_id|>user<|end_header_id|>"
             turns = conversation.split(sep2)
 
-            turns[1]=turns[0]+sep2+turns[1]
-            turns=turns[1:]
-
+            turns[1] = turns[0] + sep2 + turns[1]
+            turns = turns[1:]
 
             cur_len = 1
             loss_mask[:cur_len] = 0
@@ -120,16 +150,15 @@ def build_dataset_rank(
                 # "-2" is hardcoded for the Llama tokenizer to make the offset correct.
                 instruction_len = len(tokenizer(parts[0]).input_ids) - 1
 
-
                 # Ignore the user instructions
-                if i==0:
-                    loss_mask[cur_len: cur_len + instruction_len-2] = 0
+                if i == 0:
+                    loss_mask[cur_len: cur_len + instruction_len - 2] = 0
                 else:
-                    loss_mask[cur_len-3: cur_len + instruction_len+1] = 0
+                    loss_mask[cur_len - 3: cur_len + instruction_len + 1] = 0
                 cur_len += turn_len
-                if i!=0:
-                    cur_len+=3
-                #cur_len+=2
+                if i != 0:
+                    cur_len += 3
+                # cur_len+=2
 
                 # if i != 0 and not tokenizer.legacy:
                 #     # The legacy and non-legacy modes handle special tokens differently
@@ -137,18 +166,16 @@ def build_dataset_rank(
 
             loss_mask[cur_len:] = 0
 
-
-
             new_examples["conversation"].append(conversation)
-            new_examples["input_ids"].append(input_ids[None,:])
-            new_examples["loss_mask"].append(loss_mask[None,:])
+            new_examples["input_ids"].append(input_ids[None, :])
+            new_examples["loss_mask"].append(loss_mask[None, :])
 
         return new_examples
 
     ds1 = ds1.map(
         preprocess_function,
         batched=True,
-        #num_proc=num_proc,
+        # num_proc=num_proc,
         remove_columns=original_columns1,
         load_from_cache_file=False
     )
@@ -162,7 +189,8 @@ def build_dataset_rank(
     # dst.set_format(type="torch")
     return ds1
 
-bigtokenizer = AutoTokenizer.from_pretrained(bigname,use_fast=False)
+
+bigtokenizer = AutoTokenizer.from_pretrained(bigname, use_fast=False)
 ds = build_dataset_rank(bigtokenizer)
 print(ds)
 # quantization_config = BitsAndBytesConfig(
@@ -173,49 +201,41 @@ print(ds)
 #     )
 # bigmodel = AutoModelForCausalLM.from_pretrained(bigname, load_in_4bit=True, device_map={"": 0}, )
 # smallmodel = AutoModelForCausalLM.from_pretrained(smallname, load_in_4bit=True, device_map={"": 1}, )
-bigmodel = AutoModelForCausalLM.from_pretrained(bigname,  device_map="auto",torch_dtype=torch.float16)
-#bigmodel = AutoModelForCausalLM.from_pretrained(bigname,  device_map="auto",load_in_8bit=True)
+bigmodel = AutoModelForCausalLM.from_pretrained(bigname, device_map="auto", torch_dtype=torch.float16)
+# bigmodel = AutoModelForCausalLM.from_pretrained(bigname,  device_map="auto",load_in_8bit=True)
 bigmodel.eval()
-
-
-
-
-
-
-
-
-
 
 
 @torch.no_grad()
 def ge(data):
-    input_ids=data["input_ids"]
+    input_ids = data["input_ids"]
     outs_big = bigmodel(input_ids.cuda(), output_hidden_states=True)
     hidden_state_big = outs_big.hidden_states[-1]
     max_prob_tokens_big = torch.argmax(outs_big.logits, dim=-1)
     probs = torch.softmax(outs_big.logits, dim=-1)
-    maxp=probs[0].max(dim=1).values
-    td={"input_ids":input_ids.cpu()[0],"hidden_state":hidden_state_big.cpu()[0],"loss_mask":data["loss_mask"].cpu()[0]}
+    maxp = probs[0].max(dim=1).values
+    td = {"input_ids": input_ids.cpu()[0], "hidden_state": hidden_state_big.cpu()[0],
+          "loss_mask": data["loss_mask"].cpu()[0]}
     return td
+
 
 outdir = f'{args.outdir}/{args.index}'
 if not os.path.exists(outdir):
     os.makedirs(outdir)
 
-def writedata(name,data_point):
+
+def writedata(name, data_point):
     if not os.path.exists(name):
         os.makedirs(name)
-    current_length=len(os.listdir(name))
-    idx=current_length
+    current_length = len(os.listdir(name))
+    idx = current_length
     torch.save(data_point, f'{name}/data_{idx}.ckpt')
 
 
-for id,data in enumerate(ds):
-    if id%100==0:
-        print(id,end="\t")
+for id, data in enumerate(ds):
+    if id % 100 == 0:
+        print(id, end="\t")
     if id % 1000 == 0:
         print("")
     outdata = ge(data)
-    writedata(outdir,outdata)
-
-
+    writedata(outdir, outdata)

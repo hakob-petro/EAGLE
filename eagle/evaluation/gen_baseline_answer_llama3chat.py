@@ -439,13 +439,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--max-new-token",
         type=int,
-        default=1024,
+        default=8192,
         help="The maximum number of new generated tokens.",
     )
     parser.add_argument(
         "--total-token",
         type=int,
-        default=63,
+        default=60,
         help="The maximum number of new generated tokens.",
     )
     parser.add_argument(
@@ -457,7 +457,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--top-k",
         type=int,
-        default=8,
+        default=10,
         help="The maximum number of new generated tokens.",
     )
     parser.add_argument(

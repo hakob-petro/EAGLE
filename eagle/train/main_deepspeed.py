@@ -2,10 +2,9 @@ import argparse
 import deepspeed
 
 parser = argparse.ArgumentParser(description='sp')
-parser.add_argument('--basepath', type=str, default='/home/lyh/weights/hf/llama3chat/8B/')
-parser.add_argument('--tmpdir', type=str,
-                    default='/home/lyh/code/nlp/ess/feature_data_dataset/sharegpt_0_67999_mu_V7B/')
-parser.add_argument('--cpdir', type=str, default='0')
+parser.add_argument('--basepath', type=str, default='/root/.cache/huggingface/hub/tool_call_v3_nemo')
+parser.add_argument('--tmpdir', type=str, default='/workspace/EAGLE/eagle/ge_data/0/agentic_0_15583_mubp16/')
+parser.add_argument('--cpdir', type=str, default='checkpoints')
 parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
 parser = deepspeed.add_config_arguments(parser)
 args = parser.parse_args()
@@ -14,10 +13,10 @@ import json
 train_config = {
     "lr": 5e-5,
     "bs": 4,
-    "gradient_accumulation_steps": 1,
+    "gradient_accumulation_steps": 4,
     "datapath": f"{args.tmpdir}",
     "is_warmup": True,
-    "num_epochs": 200,
+    "num_epochs": 20,
     "num_warmup_steps": 2000,
     "total_steps": 800000,
     "p_w": 0.1,
@@ -31,8 +30,8 @@ train_config = {
     "mean": 0.0,
     "std": 0.2,
     "residual": "true,norm",
-    "max_len": 2048,
-    "config_path": "config.json",
+    "max_len": 15000,
+    "config_path": "/workspace/EAGLE/eagle/train/agentic.json",
     "b1": 0.9,
     "b2": 0.95,
     "grad_clip": 0.5,
@@ -49,8 +48,8 @@ from accelerate.utils import set_seed
 
 set_seed(0)
 accelerator = Accelerator(mixed_precision="fp16")
-from cnets import Model
-from configs import EConfig
+from eagle.model.cnets import Model
+from eagle.model.configs import EConfig
 from typing import Any, Dict, List
 
 from torch import nn, optim
@@ -65,7 +64,7 @@ rank = torch.distributed.get_rank()
 if rank == 0:
     import wandb
 
-    wandb.init(project="llama3-8B", entity="yuhui-li", config=train_config)
+    wandb.init(project="eagle", entity="scalet2", config=train_config)
 
 try:
     with open(os.path.join(args.basepath, "model.safetensors.index.json"), "r") as f:

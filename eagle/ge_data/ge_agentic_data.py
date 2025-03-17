@@ -12,10 +12,12 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_index)[1:-1]
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from datasets import load_dataset
+from datasets import load_dataset, concatenate_datasets
+import json
+import hashlib
 
 # bigname = "TheAgenticAI/agentic-turbo-latest"
-bigname = "/root/llama-3-merged"
+bigname = "/root/.cache/huggingface/hub/tool_call_v3_nemo"
 
 
 # bigname = "/home/lyh/weights/hf/llama2chat/7B/"
@@ -35,12 +37,45 @@ def longest_common_prefix(list1, list2):
     return common_prefix, prefix_length
 
 
+def hash_conversation(messages):
+    """Generate a hash for the entire conversation."""
+    messages_str = json.dumps(messages, sort_keys=True)  # Ensure consistent ordering
+    return hashlib.md5(messages_str.encode()).hexdigest()
+
+
+def remove_duplicates_by_hash(dataset, column):
+    dataset = dataset.map(lambda x: {"hash": hash_conversation(x[column])})
+    unique_hashes = set()
+
+    def filter_unique(example):
+        hash_value = example["hash"]
+        if hash_value not in unique_hashes:
+            unique_hashes.add(hash_value)
+            return True
+        return False
+
+    dataset = dataset.filter(filter_unique)
+    return dataset.remove_columns(["hash"])
+
+
 def build_dataset_rank(
         tokenizer, split="train",
         select=None,
 ):
-    ds = load_dataset('json', data_files="/workspace/Eagle/new_data_new.jsonl")
-    ds = ds['train']
+    # Load your dataset
+    # df_2 = load_dataset("json", data_files="/workspace/EAGLE/merged_data.jsonl", split="train")
+    # df_2 = df_2.remove_columns(["rejected_response"])
+    # df_2 = remove_duplicates_by_hash(df_2, "messages")  # Adjust split if needed
+    # print(cleaned_dataset)
+
+    df_1 = load_dataset("json", data_files="/workspace/EAGLE/new_data_new.jsonl", split="train")
+    ds = df_1
+    # df_2 = load_dataset("json", data_files="/home/hakob/ScaleTorch/EAGLE/merged_data.jsonl", split="train")
+    # df_2 = df_2.remove_columns(["rejected_response"])
+    # ds = concatenate_datasets([df_1, df_2])
+
+    # ds = load_dataset('json', data_files="/home/lyh/data/hf/Shargpt/ShareGPT_V4.3_unfiltered_cleaned_split.json")
+    # ds = ds['train']
     ds = ds.shuffle(seed=42)
     ds1 = ds.select(range(args.start, args.end))
     # ds1 = ds.select(range(100,200))
@@ -80,7 +115,7 @@ def build_dataset_rank(
             sep2 = "<|eot_id|><|start_header_id|>user<|end_header_id|>"
 
             turns = conversation.split(sep2)
-            # print(turns)
+            print("Length of turns: ", len(turns))
             if len(turns) > 1:
                 turns[1] = turns[0] + sep2 + turns[1]
                 turns = turns[1:]
@@ -155,8 +190,8 @@ print(ds)
 # bigmodel = AutoModelForCausalLM.from_pretrained(bigname, load_in_4bit=True, device_map={"": 0}, )
 # smallmodel = AutoModelForCausalLM.from_pretrained(smallname, load_in_4bit=True, device_map={"": 1}, )
 # bigmodel = AutoModelForCausalLM.from_pretrained(bigname, device_map="auto", torch_dtype=torch.bfloat16)
-bigmodel = AutoModelForCausalLM.from_pretrained(bigname, device_map="auto", torch_dtype=torch.bfloat16,
-                                                load_in_8bit=True)
+bigmodel = AutoModelForCausalLM.from_pretrained(bigname, device_map="auto", torch_dtype=torch.bfloat16, load_in_8bit=True)
+# bigmodel = AutoModelForCausalLM.from_pretrained(bigname, device_map="auto", torch_dtype=torch.float16, load_in_8bit=True)
 # bigmodel = AutoModelForCausalLM.from_pretrained(bigname,  device_map="auto",load_in_8bit=True)
 bigmodel.eval()
 
