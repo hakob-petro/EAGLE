@@ -3,9 +3,9 @@ from transformers import AutoTokenizer
 import numpy as np
 
 tokenizer = AutoTokenizer.from_pretrained(
-    "/root/.cache/huggingface/hub/models--TheAgenticAI--Nemotron-Llama/snapshots/8c600c701730659c363a1f2f055ad74a661570da/")
-jsonl_file = "/workspace/EAGLE/eagle/evaluation/mt_bench_eagle/llama38b2_40-temperature-0.0.jsonl"
-jsonl_file_base = "/workspace/EAGLE/eagle/evaluation/mt_bench/llama38b2_40-temperature-0.0.jsonl"
+    "/root/.cache/huggingface/hub/tool_call_v3_nemo")
+jsonl_file = "/workspace/mt_bench_eagle/llama38b2_40-temperature-0.0.jsonl"
+jsonl_file_base = "/workspace/mt_bench/llama38b2_40-temperature-0.0.jsonl"
 data = []
 with open(jsonl_file, 'r', encoding='utf-8') as file:
     for line in file:

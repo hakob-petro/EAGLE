@@ -369,7 +369,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--num-choices",
         type=int,
-        default=1,
+        default=3,
         help="How many completion choices to generate.",
     )
     parser.add_argument(

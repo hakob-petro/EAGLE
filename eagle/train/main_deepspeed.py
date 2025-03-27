@@ -3,8 +3,9 @@ import deepspeed
 
 parser = argparse.ArgumentParser(description='sp')
 parser.add_argument('--basepath', type=str, default='/root/.cache/huggingface/hub/tool_call_v3_nemo')
-parser.add_argument('--tmpdir', type=str, default='/workspace/EAGLE/eagle/ge_data/0/agentic_0_15583_mubp16/')
-parser.add_argument('--cpdir', type=str, default='checkpoints')
+parser.add_argument('--tmpdir', type=str,
+                    default='/workspace/EAGLE/eagle/ge_data/0/agentic_0_15583_mubp16/')
+parser.add_argument('--cpdir', type=str, default='0')
 parser.add_argument("--local_rank", type=int, default=-1, help="local_rank for distributed training on gpus")
 parser = deepspeed.add_config_arguments(parser)
 args = parser.parse_args()
@@ -12,8 +13,8 @@ import json
 
 train_config = {
     "lr": 5e-5,
-    "bs": 4,
-    "gradient_accumulation_steps": 4,
+    "bs": 1,
+    "gradient_accumulation_steps": 1,
     "datapath": f"{args.tmpdir}",
     "is_warmup": True,
     "num_epochs": 20,
@@ -30,7 +31,7 @@ train_config = {
     "mean": 0.0,
     "std": 0.2,
     "residual": "true,norm",
-    "max_len": 15000,
+    "max_len": 10000,
     "config_path": "/workspace/EAGLE/eagle/train/agentic.json",
     "b1": 0.9,
     "b2": 0.95,
@@ -63,8 +64,8 @@ deepspeed.init_distributed()
 rank = torch.distributed.get_rank()
 if rank == 0:
     import wandb
-
     wandb.init(project="eagle", entity="scalet2", config=train_config)
+    # wandb.init(project="llama3-8B", entity="yuhui-li", config=train_config)
 
 try:
     with open(os.path.join(args.basepath, "model.safetensors.index.json"), "r") as f:
